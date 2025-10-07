@@ -1,16 +1,50 @@
 import requests
-import json
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import pytesseract
+from PIL import Image
+from io import BytesIO
+
+app = Flask(__name__)
+CORS(app)
 
 NASA_URL = "https://images-api.nasa.gov"
 
-def fetchImage(search):
+def fetchImages(search):
     url = f"{NASA_URL}/search?q={search}&media_type=image"
     response = requests.get(url)
     if response.status_code == 200:
         data = response.json()
-        # with open("nasa_data.json", "w") as f:
-        #     json.dump(data, f, indent=4)
-        for i in range(5):
-            print(data["collection"]["items"][i]["links"][0]["href"])
-        
-fetchImage("nebula")
+        items = data["collection"]["items"][:50]
+        hrefs = []
+        for item in items:
+            meta = item["data"][0]
+            keywords = [k.lower() for k in meta.get("keywords", [])]
+            desc = meta.get("description", "").lower()
+            
+            if any(word in desc for word in ["illustration", "concept", "artist", "diagram", "poster", "chart", "annotated"]):
+                continue
+            if any(word in keywords for word in ["illustration", "concept", "diagram"]):
+                continue
+            if containsText(item["links"][0]["href"]):
+                continue
+
+            hrefs.append(item["links"][0]["href"])
+        return jsonify(hrefs)
+
+def containsText(url, threshold = 30):
+    try:
+        response = requests.get(url)
+        img = Image.open(BytesIO(response.content))
+        text = pytesseract.image_to_string(img)
+        return len(text.strip()) >= threshold
+    except Exception as e:
+        print(f"Error processing image {url}: {e}")
+        return False
+
+@app.route("/get-images/<string:search>", methods=["GET"])
+def getImages(search):
+    return fetchImages(search)
+
+if __name__ == "__main__":
+    app.run(debug=True)
