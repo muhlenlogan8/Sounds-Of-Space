@@ -5,10 +5,18 @@ import pytesseract
 from PIL import Image
 from io import BytesIO
 
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 NASA_URL = "https://images-api.nasa.gov"
+
+excludeWords = [
+    "illustration", "concept", "artist", "diagram", "poster", "chart", "annotated",
+    "radar", "arecibo", "goldstone", "infrared", "radio", "false color", "spectrum",
+    "black and white", "bw", "grayscale", "composite"
+]
 
 def fetchImages(search):
     url = f"{NASA_URL}/search?q={search}&media_type=image"
@@ -21,10 +29,13 @@ def fetchImages(search):
             meta = item["data"][0]
             keywords = [k.lower() for k in meta.get("keywords", [])]
             desc = meta.get("description", "").lower()
+            title = meta.get("title", "").lower()
             
-            if any(word in desc for word in ["illustration", "concept", "artist", "diagram", "poster", "chart", "annotated"]):
+            if any(word in desc for word in excludeWords):
                 continue
-            if any(word in keywords for word in ["illustration", "concept", "diagram"]):
+            if any(word in keywords for word in excludeWords):
+                continue
+            if any(word in title for word in excludeWords):
                 continue
             if containsText(item["links"][0]["href"]):
                 continue
@@ -32,7 +43,7 @@ def fetchImages(search):
             hrefs.append(item["links"][0]["href"])
         return jsonify(hrefs)
 
-def containsText(url, threshold = 30):
+def containsText(url, threshold = 10):
     try:
         response = requests.get(url)
         img = Image.open(BytesIO(response.content))
